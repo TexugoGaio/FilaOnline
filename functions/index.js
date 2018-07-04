@@ -3,9 +3,16 @@
 'use strict';
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
-const { google } = require('googleapis');
-const { WebhookClient } = require('dialogflow-fulfillment');
-const { Card, Suggestion } = require('dialogflow-fulfillment');
+const {
+    google
+} = require('googleapis');
+const {
+    WebhookClient
+} = require('dialogflow-fulfillment');
+const {
+    Card,
+    Suggestion
+} = require('dialogflow-fulfillment');
 const appcpf = require("@fnando/cpf/dist/node");
 
 
@@ -34,8 +41,18 @@ const timeZone = 'America/Buenos_Aires';
 const timeZoneOffset = '-03:00'; */
 process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
 
-var userNOME;
+var arrayUnidades;
+var lenghtUnidades
+var nomeUnidade;
+var enderecoUnidade;
+var bairroUnidade;
+var idUnidade;
+
+let nomeUSER;
+let sobrenomeUSER;
+let telefoneUSER;
 let validaUSER = null;
+let cadastrarUSER = null;
 let userCPF;
 
 
@@ -49,7 +66,10 @@ let userCPF;
 ////////////////////
 exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, response) => {
 
-    const agent = new WebhookClient({ request, response });
+    const agent = new WebhookClient({
+        request,
+        response
+    });
 
     let validCPF;
 
@@ -79,13 +99,12 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
         if (validCPF == 1) {
 
             getUser(userCPF);
-            console.log("valida " + validaUSER);
 
             if (validaUSER == 0) {
-                agent.setFollowupEvent('cadastrar_paciente');
+                agent.setFollowupEvent('agendamento_cadastrar_paciente');
                 return;
             } else if (validaUSER == 1) {
-                agent.add("oi " + userNOME);
+                agent.setFollowupEvent('agendamento_agendar');
                 return;
             } else {
                 agent.add("digite novamente o cpf.");
@@ -118,15 +137,32 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     }
 
     function cadastrarPaciente(agent) {
-        let nomeUSER = agent.parameters.nome;
-        let sobrenomeUSER = agent.parameters.sobrenome;
-        let telefoneUSER = agent.parameters.telefone;
+        nomeUSER = agent.parameters.nome;
+        sobrenomeUSER = agent.parameters.sobrenome;
+        telefoneUSER = agent.parameters.telefone;
 
         if (nomeUSER && sobrenomeUSER && telefoneUSER && userCPF) {
 
             postUser(userCPF, nomeUSER, sobrenomeUSER, telefoneUSER);
 
+
         }
+    }
+
+    function criarAgendamento(agent) {
+
+
+        var i = 0;
+        agent.add("Muito bem então " + nomeUSER + " vou listar os Postos disponíveis para agendamento, digite o numero do posto em que você vai querer realizar o atendimento: ");
+
+        while(i < lenghtUnidades){
+            selectUnidades();
+
+            agent.add("Posto" + i);
+            i++;
+        }
+
+        
     }
 
 
@@ -166,8 +202,9 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
 
     let intentMap = new Map();
     intentMap.set('agendamento_sim', agendar);
-    intentMap.set('cpf_invalido', cpf_invalido);
-    intentMap.set('cadastrar_paciente_sim', cadastrarPaciente);
+    intentMap.set('agendamento_cpf_invalido', cpf_invalido);
+    intentMap.set('agendamento_cadastrar_paciente_sim', cadastrarPaciente);
+    intentMap.set('agendamento_criar', criarAgendamento);
     // intentMap.set('your intent name here', yourFunctionHandler);
     // intentMap.set('your intent name here', googleAssistantHandler);
     agent.handleRequest(intentMap);
@@ -183,14 +220,14 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
 function getUser(cpf) {
     let data;
     var ref = db.ref("server/usuarios");
-    ref.child(cpf.toString()).on("value", function(snapshot) {
+    ref.child(cpf.toString()).on("value", function (snapshot) {
 
         if (snapshot.hasChildren()) {
             data = snapshot.val();
 
-            userNOME = data.nome.toString();
-
-            console.log("nome" + userNOME);
+            nomeUSER = data.nome.toString();
+            sobrenomeUSER = data.sobrenome.toString();
+            telefoneUSER = data.telefone.toString();
 
             validaUSER = 1;
         } else {
@@ -202,6 +239,37 @@ function getUser(cpf) {
 
 }
 
-function postUser(cpf, nome, sobrenome, telefone) {
-
+function postUser(userCPF, userNOME, userSOBRENOME, userTELEFONE) {
+    var ref = db.ref("server/usuarios");
+    ref.child(userCPF.toString()).set({
+        nome: userNOME,
+        sobrenome: userSOBRENOME,
+        telefone: userTELEFONE,
+    }, function (error) {
+        if (error) {
+            console.log("erro ao cadastrar usuário.");
+        } else {
+            console.log("usuario cadastrado.");
+        }
+    });
 }
+
+function selectUnidades(agent) {
+    let dados;
+        var ref = db.ref("server/unidades");
+        ref.orderByKey().on("value", function (snapshot) {
+            console.log("quantidade:" + snapshot.numChildren());
+            console.log("valor  = " + snapshot.val());
+            snapshot.forEach(function (data) {
+                dados = data.val();
+                arrayUnidades.push(dados);
+                
+            });
+            for(i=0; i<arrayUnidades.length; i++){
+                console.log(arrayUnidades[i]);
+            }
+            
+        });
+}
+
+
