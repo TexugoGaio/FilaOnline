@@ -34,6 +34,10 @@ const timeZone = 'America/Buenos_Aires';
 const timeZoneOffset = '-03:00'; */
 process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
 
+var userNOME;
+let validaUSER = null;
+let userCPF;
+
 
 
 /////////////////////
@@ -46,40 +50,20 @@ process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
 exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, response) => {
 
     const agent = new WebhookClient({ request, response });
-    console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
-    console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
 
-    let unidade;
     let validCPF;
-    let validaUSER;
-    let userCPF;
-
-
-    function welcome(agent) {
-        agent.add(`Seja muito bem vindo!`);
-
-        /*var usersRef = ref.child("users");
-        usersRef.set({
-            alanisawesome: {
-                date_of_birth: "June 23, 1912",
-                full_name: "Alan Turing"
-            },
-            gracehop: {
-                date_of_birth: "December 9, 1906",
-                full_name: "Grace Hopper"
-            }
-        });*/
-
-    }
 
     function agendar(agent) {
-        userCPF = agent.parameters.cpf;
-
 
         if (agent.parameters.cpf) {
 
-            console.log("1 " + agent.parameters.cpf);
+            if (agent.parameters.cpf != userCPF) {
+                validaUSER = null;
+            }
 
+            userCPF = agent.parameters.cpf;
+
+            //PRIMEIRO - VALIDA O CPF
             if (appcpf.isValid(agent.parameters.cpf)) {
 
                 validCPF = 1;
@@ -90,15 +74,23 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
 
             }
 
-
         }
-
-
-
+        // SE CPF FOR VALIDO, VERIFICA SE ESTE CPF JÁ É CADASTRADO
         if (validCPF == 1) {
 
-            agent.add("oi");
+            getUser(userCPF);
+            console.log("valida " + validaUSER);
 
+            if (validaUSER == 0) {
+                agent.setFollowupEvent('cadastrar_paciente');
+                return;
+            } else if (validaUSER == 1) {
+                agent.add("oi " + userNOME);
+                return;
+            } else {
+                agent.add("digite novamente o cpf.");
+                return;
+            }
 
         }
     }
@@ -108,7 +100,6 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
         if (agent.parameters.cpf) {
 
             userCPF = agent.parameters.cpf;
-            console.log("2 " + agent.parameters.cpf);
 
             if (appcpf.isValid(agent.parameters.cpf)) {
 
@@ -124,6 +115,18 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
         }
 
 
+    }
+
+    function cadastrarPaciente(agent) {
+        let nomeUSER = agent.parameters.nome;
+        let sobrenomeUSER = agent.parameters.sobrenome;
+        let telefoneUSER = agent.parameters.telefone;
+
+        if (nomeUSER && sobrenomeUSER && telefoneUSER && userCPF) {
+
+            postUser(userCPF, nomeUSER, sobrenomeUSER, telefoneUSER);
+
+        }
     }
 
 
@@ -162,9 +165,9 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     // Run the proper function handler based on the matched Dialogflow intent name
 
     let intentMap = new Map();
-    intentMap.set('CARALHO', welcome);
     intentMap.set('agendamento_sim', agendar);
     intentMap.set('cpf_invalido', cpf_invalido);
+    intentMap.set('cadastrar_paciente_sim', cadastrarPaciente);
     // intentMap.set('your intent name here', yourFunctionHandler);
     // intentMap.set('your intent name here', googleAssistantHandler);
     agent.handleRequest(intentMap);
@@ -177,14 +180,28 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
 //
 ////////////////////
 
-function getUnidades() {
-    var ref = db.ref("server/unidades");
-    ref.orderByKey().on("value", function(snapshot) {
-        snapshot.forEach(function(data) {
-            console.log(" AS UNIDADES unidades:" + data.key + "valores" + data.val().email);
-        })
-        var posto = snapshot.val().nome;
+function getUser(cpf) {
+    let data;
+    var ref = db.ref("server/usuarios");
+    ref.child(cpf.toString()).on("value", function(snapshot) {
 
-        return posto;
+        if (snapshot.hasChildren()) {
+            data = snapshot.val();
+
+            userNOME = data.nome.toString();
+
+            console.log("nome" + userNOME);
+
+            validaUSER = 1;
+        } else {
+
+            validaUSER = 0;
+        }
+
     });
+
+}
+
+function postUser(cpf, nome, sobrenome, telefone) {
+
 }
