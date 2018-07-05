@@ -41,7 +41,7 @@ const timeZone = 'America/Buenos_Aires';
 const timeZoneOffset = '-03:00'; */
 process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
 
-var arrayUnidades;
+var arrayUnidades = [];
 var lenghtUnidades
 var nomeUnidade;
 var enderecoUnidade;
@@ -98,12 +98,15 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
         // SE CPF FOR VALIDO, VERIFICA SE ESTE CPF JÁ É CADASTRADO
         if (validCPF == 1) {
 
-            getUser(userCPF);
-
+            console.log("chamada de usuario foi");
+            console.log(validaUSER);
             if (validaUSER == 0) {
                 agent.setFollowupEvent('agendamento_cadastrar_paciente');
                 return;
-            } else if (validaUSER == 1) {
+            }
+            //validaUSER == 1 => USUARIO CADASTRADO, ENVIAR PARA AGENDAMENTO
+            else if (validaUSER == 1) {
+                console.log("VAI");
                 agent.setFollowupEvent('agendamento_agendar');
                 return;
             } else {
@@ -111,58 +114,78 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
                 return;
             }
 
+            getUser(userCPF);
+            // validaUSER == 0 => PRECISA CADASTRAR O USUARIO
+
+
         }
     }
 
-    function cpf_invalido(agent) {
+    /*     function cpf_invalido(agent) {
 
-        if (agent.parameters.cpf) {
+            if (agent.parameters.cpf) {
 
-            userCPF = agent.parameters.cpf;
+                userCPF = agent.parameters.cpf;
 
-            if (appcpf.isValid(agent.parameters.cpf)) {
+                if (appcpf.isValid(agent.parameters.cpf)) {
 
-                validCPF = 1;
-                return true;
+                    validCPF = 1;
+                    return true;
 
-            } else {
+                } else {
 
-                agent.setFollowupEvent('cpf_invalido');
+                    agent.setFollowupEvent('cpf_invalido');
+
+                }
 
             }
 
-        }
 
-
-    }
+        } */
 
     function cadastrarPaciente(agent) {
         nomeUSER = agent.parameters.nome;
         sobrenomeUSER = agent.parameters.sobrenome;
         telefoneUSER = agent.parameters.telefone;
 
+        function cadastroCallback() {
+            console.log("Paciente foi cadastrado");
+            agent.setFollowupEvent('agendamento_agendar');
+        }
+
         if (nomeUSER && sobrenomeUSER && telefoneUSER && userCPF) {
 
-            postUser(userCPF, nomeUSER, sobrenomeUSER, telefoneUSER);
+            postUser(userCPF, nomeUSER, sobrenomeUSER, telefoneUSER, cadastroCallback);
 
-
+            agent.setFollowupEvent('agendamento_encaminhar');
         }
+
+
     }
 
     function criarAgendamento(agent) {
+        let i = 0;
+
+        function ArrayCallback() {
+            console.log("callback com sucesso");
+
+            agent.add("Muito bem então " + nomeUSER + " vou listar os Postos disponíveis para agendamento, digite o numero do posto em que você vai querer realizar o atendimento: ");
+
+            while (i < lenghtUnidades) {
+                agent.add("Nº: " + arrayUnidades[i].id + "\nNome: " + arrayUnidades[i].nome + arrayUnidades[i].id + "\nEndereço: " + arrayUnidades[i].endereco + "\nBairro: " + arrayUnidades[i].bairro);
+
+                i++;
+            }
+        };
+
+        selectUnidades(ArrayCallback);
 
 
-        var i = 0;
-        agent.add("Muito bem então " + nomeUSER + " vou listar os Postos disponíveis para agendamento, digite o numero do posto em que você vai querer realizar o atendimento: ");
+    }
 
-        while(i < lenghtUnidades){
-            selectUnidades();
-
-            agent.add("Posto" + i);
-            i++;
-        }
-
-        
+    function encaminharAgend(agent) {
+        agent.setFollowupEvent('agendamento_agendar');
+        return;
     }
 
 
@@ -201,8 +224,9 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     // Run the proper function handler based on the matched Dialogflow intent name
 
     let intentMap = new Map();
+    intentMap.set('agendamento_encaminhar_sim', encaminharAgend);
     intentMap.set('agendamento_sim', agendar);
-    intentMap.set('agendamento_cpf_invalido', cpf_invalido);
+    //intentMap.set('agendamento_cpf_invalido', cpf_invalido);
     intentMap.set('agendamento_cadastrar_paciente_sim', cadastrarPaciente);
     intentMap.set('agendamento_criar', criarAgendamento);
     // intentMap.set('your intent name here', yourFunctionHandler);
@@ -220,7 +244,7 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
 function getUser(cpf) {
     let data;
     var ref = db.ref("server/usuarios");
-    ref.child(cpf.toString()).on("value", function (snapshot) {
+    ref.child(cpf.toString()).on("value", function(snapshot) {
 
         if (snapshot.hasChildren()) {
             data = snapshot.val();
@@ -234,42 +258,41 @@ function getUser(cpf) {
 
             validaUSER = 0;
         }
-
     });
 
 }
 
-function postUser(userCPF, userNOME, userSOBRENOME, userTELEFONE) {
+function postUser(userCPF, userNOME, userSOBRENOME, userTELEFONE, callback) {
     var ref = db.ref("server/usuarios");
     ref.child(userCPF.toString()).set({
         nome: userNOME,
         sobrenome: userSOBRENOME,
         telefone: userTELEFONE,
-    }, function (error) {
+    }, function(error) {
         if (error) {
             console.log("erro ao cadastrar usuário.");
         } else {
             console.log("usuario cadastrado.");
         }
+
+        callback();
     });
 }
 
-function selectUnidades(agent) {
-    let dados;
-        var ref = db.ref("server/unidades");
-        ref.orderByKey().on("value", function (snapshot) {
-            console.log("quantidade:" + snapshot.numChildren());
-            console.log("valor  = " + snapshot.val());
-            snapshot.forEach(function (data) {
-                dados = data.val();
-                arrayUnidades.push(dados);
-                
-            });
-            for(i=0; i<arrayUnidades.length; i++){
-                console.log(arrayUnidades[i]);
-            }
-            
+function selectUnidades(callback) {
+
+    var ref = db.ref("server/unidades");
+    ref.orderByKey().on("value", function(snapshot) {
+        lenghtUnidades = snapshot.numChildren()
+        snapshot.forEach(function(data) {
+            var item = data.val();
+            item.key = data.key;
+
+            arrayUnidades.push(item);
         });
+        console.log(arrayUnidades);
+
+        callback();
+    });
+
 }
-
-
